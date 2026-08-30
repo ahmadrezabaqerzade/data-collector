@@ -22,20 +22,20 @@ def clean_value(x):
     return x
 
 class BaseDataCollector:
-    def __init__(self, timeout=5, max_try=1, try_delay=1):
+    def __init__(self, timeout=5, max_retries=1, try_delay=1):
         self.session = requests.Session()
         self.timeout = timeout
-        self.max_try = max_try
+        self.max_retries = max_retries
         self.try_delay = try_delay
 
     def collect(self, url, params):
-        return self.get_response(url, params, self.max_try)
+        return self.get_response(url, params, self.max_retries)
 
     def get_response(self, url, params, try_number):
         if try_number == 0:
             return None 
         try:
-            print(f"Try->{self.max_try-try_number+1}")
+            print(f"Try->{self.max_retries-try_number+1}")
             response = self.session.get(url=url,
                                 params=params,
                                 timeout=self.timeout)
@@ -48,49 +48,32 @@ class BaseDataCollector:
             return self.get_response(url, params, try_number-1)
 
 class TGJUDataCollector(BaseDataCollector):
-    def __init__(self, param, timeout=5, max_try=1, try_delay=1):
-        super().__init__(timeout=timeout, max_try=max_try, try_delay=try_delay)
-        self.param = param
+    def __init__(self, timeout=5, max_retries=1, try_delay=1):
+        super().__init__(timeout=timeout, max_retries=max_retries, try_delay=try_delay)
 
-    def collect(self, url, params=None):
-        response = super().collect(url, params)
+        self._url = "https://api.tgju.org/v1/market/indicator/summary-table-data/geram18" 
+        self._params = {
+                    "lang": "fa", "order_dir": "asc", "draw": 3, "start": 0,
+                    "length": None, "search": "", "order_col": "", "from": "", "to": "",
+                    "convert_to_ad": 1,
+                }
+        self._columns = ["Open",
+                         "Low",
+                         "High",
+                         "Close",
+                         "Change",
+                         "Change Percent",
+                         "Date / Gregorian",
+                         "Date / Solar Hijri"]
+
+    def collect(self, start_date:str = "", end_date:str = ""):
+        self._params["from"] = start_date
+        self._params["to"] = end_date
+        response = super().collect(self._url, self._params)
         try:
             data = response.json()
-            df = pd.DataFrame(data[self.param]).map(clean_value)
+            df = pd.DataFrame(data['data']).map(clean_value)
+            df.columns = self._columns
             return df
         except json.JSONDecodeError as e:
             print(e)
-
-
-
-if __name__ == "__main__":
-
-    url = "https://api.tgju.org/v1/market/indicator/summary-table-data/geram18" 
-    timeout = 5
-    max_try = 5
-    params = {
-        "lang": "fa",
-        "order_dir": "asc",
-        "draw": 3,
-        "start": 0,
-        "length": 10000,
-        "search": "",
-        "order_col": "",
-        "from": "1405/01/01",
-        "to": "",
-        "convert_to_ad": 1,
-    }
-
-    columns = ["Open",
-               "Low",
-               "High",
-               "Close",
-               "Change",
-               "Change Percent",
-               "Date / Gregorian",
-               "Date / Solar Hijri"]
-
-    data_collector = TGJUDataCollector('data', timeout=timeout, max_try=max_try)
-    data = data_collector.collect(url=url, params=params)
-    data.columns = columns
-    print(data)
